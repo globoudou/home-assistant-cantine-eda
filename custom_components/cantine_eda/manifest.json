@@ -1,0 +1,14 @@
+{
+  "domain": "cantine_eda",
+  "name": "Cantine EDA (Moneweb)",
+  "codeowners": ["@globoudou"],
+  "config_flow": true,
+  "dependencies": ["http", "websocket_api", "diagnostics"],
+  "after_dependencies": ["frontend"],
+  "documentation": "https://github.com/globoudou/home-assistant-cantine-eda",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/globoudou/home-assistant-cantine-eda/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

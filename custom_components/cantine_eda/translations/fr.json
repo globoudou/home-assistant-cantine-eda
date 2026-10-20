@@ -1,0 +1,215 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ajouter un compte cantine",
+        "description": "Identifiants de l'espace client Moneweb (ceux du site de rechargement). Vous pourrez ajouter d'autres comptes ensuite.",
+        "data": {
+          "host": "Adresse du site",
+          "username": "Identifiant",
+          "password": "Mot de passe",
+          "verify_ssl": "Vérifier le certificat SSL"
+        },
+        "data_description": {
+          "host": "Par exemple eda-arcueil.moneweb.fr",
+          "verify_ssl": "Décochez seulement si la connexion échoue à cause du certificat du site."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Mot de passe refusé",
+        "description": "Le site refuse le mot de passe du compte {account}. Saisissez le mot de passe actuel.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      },
+      "reconfigure": {
+        "title": "Modifier le compte {account}",
+        "description": "Si vous avez changé le mot de passe vous-même sur le site, saisissez-le ici. L'ancien reste récupérable.",
+        "data": {
+          "host": "Adresse du site",
+          "password": "Mot de passe",
+          "verify_ssl": "Vérifier le certificat SSL"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Identifiant ou mot de passe incorrect.",
+      "cannot_connect": "Impossible de joindre le site.",
+      "ssl_error": "Le certificat du site n'a pas pu être vérifié. Réessayez en décochant « Vérifier le certificat SSL ».",
+      "unknown": "Erreur inattendue, voir le journal."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "Mot de passe mis à jour.",
+      "reconfigure_successful": "Compte mis à jour."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options du compte",
+        "sections": {
+          "general": {
+            "name": "Général",
+            "data": {
+              "scan_interval": "Intervalle de mise à jour",
+              "low_balance_threshold": "Seuil de solde bas",
+              "recharge_url": "Page de rechargement",
+              "photo_url_template": "Modèle d'URL de la photo",
+              "allow_non_admin": "Les non-administrateurs peuvent copier le mot de passe"
+            },
+            "data_description": {
+              "recharge_url": "Page ouverte par le bouton « Recharger » de la carte. Vide = accueil de l'espace client.",
+              "photo_url_template": "Seulement si la photo est référencée par un identifiant (voir les diagnostics). Ex. /clients/api/ticket/photo/'{id}'"
+            }
+          },
+          "renewal": {
+            "name": "Renouvellement du mot de passe",
+            "description": "Avant d'activer : renseignez l'endpoint de changement de mot de passe du site (voir le README). Le nouveau mot de passe est enregistré avant l'appel au site et vérifié par une reconnexion : l'ancien n'est jamais perdu.",
+            "data": {
+              "renew_interval_days": "Renouveler automatiquement tous les (0 = jamais)",
+              "password_length": "Longueur du mot de passe",
+              "password_symbols": "Inclure des symboles",
+              "password_change_endpoint": "Endpoint de changement de mot de passe",
+              "password_change_payload": "Corps JSON de la requête"
+            },
+            "data_description": {
+              "password_change_endpoint": "Ex. /clients/api/compte/password (POST). Vide = renouvellement désactivé.",
+              "password_change_payload": "'{old}', '{new}' et '{id}' sont remplacés par l'ancien mot de passe, le nouveau et l'identifiant."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_payload": "Le corps de la requête n'est pas un JSON valide.",
+      "payload_missing_new": "Le corps de la requête doit contenir '{new}'.",
+      "renew_without_endpoint": "Renseignez l'endpoint avant d'activer le renouvellement automatique."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance": {
+        "name": "Solde"
+      },
+      "last_passage": {
+        "name": "Dernier passage"
+      },
+      "last_meal": {
+        "name": "Dernier repas"
+      },
+      "last_ticket_amount": {
+        "name": "Prix du dernier repas"
+      },
+      "month_spending": {
+        "name": "Dépenses du mois"
+      },
+      "month_passages": {
+        "name": "Passages du mois",
+        "unit_of_measurement": "passages"
+      },
+      "last_payment": {
+        "name": "Dernier rechargement"
+      },
+      "password_changed_at": {
+        "name": "Mot de passe changé le"
+      },
+      "next_password_renewal": {
+        "name": "Prochain renouvellement du mot de passe"
+      }
+    },
+    "binary_sensor": {
+      "low_balance": {
+        "name": "Solde bas"
+      }
+    },
+    "image": {
+      "tray_photo": {
+        "name": "Photo du dernier plateau"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Actualiser"
+      },
+      "renew_password": {
+        "name": "Renouveler le mot de passe"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Identifiant ou mot de passe refusé par le site."
+    },
+    "ssl_error": {
+      "message": "Certificat du site invalide : {error}"
+    },
+    "cannot_connect": {
+      "message": "Site injoignable : {error}"
+    },
+    "password_rejected": {
+      "message": "Ce mot de passe est refusé par le site."
+    },
+    "renew_not_configured": {
+      "message": "Renouvellement non configuré : renseignez l'endpoint de changement de mot de passe dans les options."
+    },
+    "renew_failed": {
+      "message": "Le mot de passe n'a pas été changé (l'ancien fonctionne toujours) : {error}"
+    },
+    "renew_unverified": {
+      "message": "Impossible de vérifier le nouveau mot de passe ({error}). L'ancien et le nouveau sont conservés : récupérez-les avec l'action « Récupérer le mot de passe »."
+    },
+    "entry_not_found": {
+      "message": "Compte {entry_id} introuvable."
+    },
+    "entry_not_loaded": {
+      "message": "Le compte {account} n'est pas chargé."
+    }
+  },
+  "issues": {
+    "renew_failed": {
+      "title": "Échec du renouvellement du mot de passe ({account})",
+      "description": "Le renouvellement du mot de passe du compte {account} a échoué : {error}\n\nAucun mot de passe n'a été perdu. L'action « Récupérer le mot de passe » affiche le mot de passe courant, le précédent et celui en cours de changement. Une nouvelle tentative automatique aura lieu dans 24 h."
+    }
+  },
+  "services": {
+    "get_password": {
+      "name": "Récupérer le mot de passe",
+      "description": "Renvoie l'identifiant et les mots de passe (courant, précédent, en cours) d'un compte. Réservé aux administrateurs.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Compte",
+          "description": "Compte cantine."
+        }
+      }
+    },
+    "renew_password": {
+      "name": "Renouveler le mot de passe",
+      "description": "Change le mot de passe sur le site (aléatoire ou imposé), puis vérifie qu'il fonctionne.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Compte",
+          "description": "Compte cantine."
+        },
+        "password": {
+          "name": "Nouveau mot de passe",
+          "description": "Laisser vide pour en générer un."
+        }
+      }
+    },
+    "set_password": {
+      "name": "Enregistrer un mot de passe",
+      "description": "À utiliser si vous avez changé le mot de passe vous-même sur le site. Il est vérifié avant d'être enregistré.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Compte",
+          "description": "Compte cantine."
+        },
+        "password": {
+          "name": "Mot de passe",
+          "description": "Mot de passe actuel du site."
+        }
+      }
+    }
+  }
+}

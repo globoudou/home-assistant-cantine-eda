@@ -1,0 +1,215 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a canteen account",
+        "description": "Credentials of the Moneweb customer portal (the top-up website). You can add more accounts afterwards.",
+        "data": {
+          "host": "Website address",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "For example eda-arcueil.moneweb.fr",
+          "verify_ssl": "Only uncheck if the connection fails because of the site certificate."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Password rejected",
+        "description": "The website rejects the password of account {account}. Enter the current password.",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Edit account {account}",
+        "description": "If you changed the password yourself on the website, enter it here. The previous one stays retrievable.",
+        "data": {
+          "host": "Website address",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Cannot reach the website.",
+      "ssl_error": "The site certificate could not be verified. Retry with \"Verify SSL certificate\" unchecked.",
+      "unknown": "Unexpected error, see the log."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Password updated.",
+      "reconfigure_successful": "Account updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Account options",
+        "sections": {
+          "general": {
+            "name": "General",
+            "data": {
+              "scan_interval": "Update interval",
+              "low_balance_threshold": "Low balance threshold",
+              "recharge_url": "Top-up page",
+              "photo_url_template": "Photo URL template",
+              "allow_non_admin": "Non-admin users can copy the password"
+            },
+            "data_description": {
+              "recharge_url": "Page opened by the card's \"Top up\" button. Empty = portal home page.",
+              "photo_url_template": "Only if the photo is referenced by an id (see diagnostics). E.g. /clients/api/ticket/photo/'{id}'"
+            }
+          },
+          "renewal": {
+            "name": "Password renewal",
+            "description": "Before enabling: set the site's password-change endpoint (see README). The new password is saved before calling the site and verified by logging in again: the old one is never lost.",
+            "data": {
+              "renew_interval_days": "Renew automatically every (0 = never)",
+              "password_length": "Password length",
+              "password_symbols": "Include symbols",
+              "password_change_endpoint": "Password change endpoint",
+              "password_change_payload": "Request JSON body"
+            },
+            "data_description": {
+              "password_change_endpoint": "E.g. /clients/api/compte/password (POST). Empty = renewal disabled.",
+              "password_change_payload": "'{old}', '{new}' and '{id}' are replaced by the old password, the new one and the username."
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "invalid_payload": "The request body is not valid JSON.",
+      "payload_missing_new": "The request body must contain '{new}'.",
+      "renew_without_endpoint": "Set the endpoint before enabling automatic renewal."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance": {
+        "name": "Balance"
+      },
+      "last_passage": {
+        "name": "Last visit"
+      },
+      "last_meal": {
+        "name": "Last meal"
+      },
+      "last_ticket_amount": {
+        "name": "Last meal price"
+      },
+      "month_spending": {
+        "name": "Spending this month"
+      },
+      "month_passages": {
+        "name": "Visits this month",
+        "unit_of_measurement": "visits"
+      },
+      "last_payment": {
+        "name": "Last top-up"
+      },
+      "password_changed_at": {
+        "name": "Password changed on"
+      },
+      "next_password_renewal": {
+        "name": "Next password renewal"
+      }
+    },
+    "binary_sensor": {
+      "low_balance": {
+        "name": "Low balance"
+      }
+    },
+    "image": {
+      "tray_photo": {
+        "name": "Last tray photo"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh"
+      },
+      "renew_password": {
+        "name": "Renew password"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Username or password rejected by the website."
+    },
+    "ssl_error": {
+      "message": "Invalid site certificate: {error}"
+    },
+    "cannot_connect": {
+      "message": "Website unreachable: {error}"
+    },
+    "password_rejected": {
+      "message": "This password is rejected by the website."
+    },
+    "renew_not_configured": {
+      "message": "Renewal not configured: set the password change endpoint in the options."
+    },
+    "renew_failed": {
+      "message": "The password was not changed (the old one still works): {error}"
+    },
+    "renew_unverified": {
+      "message": "Could not verify the new password ({error}). Both old and new are kept: retrieve them with the \"Get password\" action."
+    },
+    "entry_not_found": {
+      "message": "Account {entry_id} not found."
+    },
+    "entry_not_loaded": {
+      "message": "Account {account} is not loaded."
+    }
+  },
+  "issues": {
+    "renew_failed": {
+      "title": "Password renewal failed ({account})",
+      "description": "Renewing the password of account {account} failed: {error}\n\nNo password was lost. The \"Get password\" action shows the current, previous and pending passwords. An automatic retry will happen in 24 h."
+    }
+  },
+  "services": {
+    "get_password": {
+      "name": "Get password",
+      "description": "Returns the username and passwords (current, previous, pending) of an account. Admins only.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "Canteen account."
+        }
+      }
+    },
+    "renew_password": {
+      "name": "Renew password",
+      "description": "Changes the password on the website (random or given), then checks it works.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "Canteen account."
+        },
+        "password": {
+          "name": "New password",
+          "description": "Leave empty to generate one."
+        }
+      }
+    },
+    "set_password": {
+      "name": "Set password",
+      "description": "Use when you changed the password yourself on the website. It is verified before being saved.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Account",
+          "description": "Canteen account."
+        },
+        "password": {
+          "name": "Password",
+          "description": "Current website password."
+        }
+      }
+    }
+  }
+}

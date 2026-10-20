@@ -1,0 +1,33 @@
+get_password:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: cantine_eda
+
+renew_password:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: cantine_eda
+    password:
+      required: false
+      selector:
+        text:
+          type: password
+
+set_password:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: cantine_eda
+    password:
+      required: true
+      selector:
+        text:
+          type: password
