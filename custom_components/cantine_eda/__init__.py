@@ -9,8 +9,8 @@ from pathlib import Path
 import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -50,19 +50,73 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def _async_register_card(hass: HomeAssistant) -> None:
-    """Sert la carte JS et la charge automatiquement dans le frontend."""
-    if hass.http is None or "frontend_extra_module_url" not in hass.data:
-        _LOGGER.debug("Interface web absente : carte non enregistrée")
+    """Sert la carte JS et l'injecte dans tous les tableaux de bord."""
+    if hass.http is None:
+        _LOGGER.warning("Serveur web indisponible : carte Cantine EDA non enregistrée")
         return
     from homeassistant.components.frontend import add_extra_js_url  # noqa: PLC0415
     from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
 
     card_path = Path(__file__).parent / "frontend" / CARD_FILENAME
-    integration = await async_get_integration(hass, DOMAIN)
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(CARD_URL, str(card_path), cache_headers=False)]
-    )
-    add_extra_js_url(hass, f"{CARD_URL}?v={integration.version}")
+    try:
+        version = (await async_get_integration(hass, DOMAIN)).version
+        if not card_path.is_file():
+            raise FileNotFoundError(card_path)
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_URL, str(card_path), cache_headers=False)]
+        )
+        add_extra_js_url(hass, f"{CARD_URL}?v={version}")
+    except Exception:
+        _LOGGER.exception("La carte Cantine EDA n'a pas pu être enregistrée")
+        return
+    _LOGGER.debug("Carte Cantine EDA servie sur %s (v%s)", CARD_URL, version)
+
+    async def _resource(_event: Event | None = None) -> None:
+        await _async_ensure_dashboard_resource(hass, f"{CARD_URL}?v={version}")
+
+    if hass.is_running:
+        hass.async_create_task(_resource())
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _resource)
+
+
+async def _async_ensure_dashboard_resource(hass: HomeAssistant, url: str) -> None:
+    """Ajoute (ou met à jour) la carte dans les ressources des tableaux de bord.
+
+    L'appli mobile ne charge pas toujours les modules injectés par
+    add_extra_js_url ; une ressource Lovelace est chargée partout. Seul le mode
+    « stockage » (le mode par défaut) est modifiable.
+    """
+    try:
+        from homeassistant.components.lovelace.const import (  # noqa: PLC0415
+            LOVELACE_DATA,
+        )
+
+        data = hass.data.get(LOVELACE_DATA)
+        resources = getattr(data, "resources", None)
+        if resources is None or getattr(data, "resource_mode", "") != "storage":
+            return
+        if not resources.loaded:
+            await resources.async_load()
+            resources.loaded = True
+        matches = [
+            r
+            for r in resources.async_items()
+            if str(r.get("url", "")).split("?")[0] == CARD_URL
+        ]
+        if not matches:
+            await resources.async_create_item({"res_type": "module", "url": url})
+            _LOGGER.info("Ressource de tableau de bord ajoutée : %s", url)
+            return
+        first, *duplicates = matches
+        if first.get("url") != url or first.get("type") != "module":
+            await resources.async_update_item(
+                first["id"], {"res_type": "module", "url": url}
+            )
+        for dup in duplicates:
+            await resources.async_delete_item(dup["id"])
+    except Exception:
+        _LOGGER.exception("Impossible d'ajouter la carte aux ressources des tableaux de bord")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MonewebConfigEntry) -> bool:

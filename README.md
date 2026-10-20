@@ -57,7 +57,9 @@ endpoint de changement et corps JSON de la requête.
 
 ## Carte
 
-La carte est enregistrée automatiquement : **Ajouter une carte → Cantine EDA**. En YAML :
+La carte est enregistrée automatiquement : l'intégration l'ajoute elle-même aux ressources des
+tableaux de bord (mode « stockage », le mode par défaut) et met cette ressource à jour à chaque
+version. **Ajouter une carte → Cantine EDA**. En YAML :
 
 ```yaml
 type: custom:cantine-eda-card
@@ -140,7 +142,7 @@ actions:
 ## Développement
 
 ```bash
-pip install pytest-homeassistant-custom-component
+pip install pytest-homeassistant-custom-component home-assistant-frontend
 pytest
 ```
 

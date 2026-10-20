@@ -11,7 +11,7 @@
  *   copy_password_on_recharge: true
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 const DOMAIN = "cantine_eda";
 
 const esc = (value) =>
@@ -445,16 +445,44 @@ const LABELS = {
   tickets: "Nombre de passages affichés",
 };
 
-if (!customElements.get("cantine-eda-card")) {
-  customElements.define("cantine-eda-card", CantineEdaCard);
-  customElements.define("cantine-eda-card-editor", CantineEdaCardEditor);
-  window.customCards = window.customCards || [];
+// Le frontend de Home Assistant peut remplacer window.customElements après le
+// chargement de ce script : une carte définie trop tôt reste alors introuvable
+// (« Custom element doesn't exist » ou sélecteur qui tourne sans fin).
+// On (re)définit donc la carte dans le registre actif pendant 30 s.
+const CARD_TAG = "cantine-eda-card";
+const EDITOR_TAG = "cantine-eda-card-editor";
+
+function defineCard() {
+  const registry = window.customElements;
+  try {
+    // Des sous-classes neuves évitent l'erreur « constructor already used ».
+    if (!registry.get(EDITOR_TAG)) registry.define(EDITOR_TAG, class extends CantineEdaCardEditor {});
+    if (!registry.get(CARD_TAG)) registry.define(CARD_TAG, class extends CantineEdaCard {});
+  } catch (err) {
+    console.warn(`${CARD_TAG}:`, err);
+  }
+  return !!registry.get(CARD_TAG);
+}
+
+const firstLoad = !window.__cantineEdaCardLoaded;
+window.__cantineEdaCardLoaded = true;
+defineCard();
+let defineTries = 0;
+const defineWatcher = setInterval(() => {
+  defineCard();
+  if (++defineTries >= 60) clearInterval(defineWatcher);
+}, 500);
+
+window.customCards = window.customCards || [];
+if (!window.customCards.some((c) => c.type === CARD_TAG)) {
   window.customCards.push({
-    type: "cantine-eda-card",
+    type: CARD_TAG,
     name: "Cantine EDA",
     description: "Solde, passages, photo du plateau et rechargement du compte cantine",
     preview: true,
     documentationURL: "https://github.com/globoudou/home-assistant-cantine-eda",
   });
+}
+if (firstLoad) {
   console.info(`%c CANTINE-EDA-CARD %c ${CARD_VERSION} `, "background:#e8710a;color:#fff;border-radius:4px 0 0 4px", "background:#444;color:#fff;border-radius:0 4px 4px 0");
 }

@@ -186,3 +186,32 @@ async def test_options_flow(hass: HomeAssistant, moneweb: FakeMoneweb, entry_dat
     assert entry.state is config_entries.ConfigEntryState.LOADED
     low = [s for s in hass.states.async_all("binary_sensor")][0]
     assert low.state == "off"  # 3,5 € > 2 €
+
+
+async def test_dashboard_resource(hass: HomeAssistant, moneweb: FakeMoneweb, entry_data) -> None:
+    """La carte est ajoutée (ou mise à jour) dans les ressources des tableaux de bord."""
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "lovelace", {})
+    resources = hass.data[LOVELACE_DATA].resources
+    await resources.async_load()
+    resources.loaded = True
+    # Ressource ajoutée à la main sans version + un doublon
+    await resources.async_create_item({"res_type": "module", "url": "/cantine_eda/cantine-eda-card.js"})
+    await resources.async_create_item({"res_type": "js", "url": "/cantine_eda/cantine-eda-card.js?v=0"})
+    await _setup(hass, entry_data)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    items = [r for r in resources.async_items() if "cantine-eda-card" in r["url"]]
+    assert len(items) == 1
+    assert items[0]["url"] == "/cantine_eda/cantine-eda-card.js?v=1.0.1"
+    assert items[0]["type"] == "module"
+
+
+async def test_card_served(hass: HomeAssistant, moneweb: FakeMoneweb, entry_data, hass_client) -> None:
+    """Le fichier de la carte est bien publié (pas de 404)."""
+    await _setup(hass, entry_data)
+    client = await hass_client()
+    resp = await client.get("/cantine_eda/cantine-eda-card.js")
+    assert resp.status == 200
+    assert "cantine-eda-card" in await resp.text()
