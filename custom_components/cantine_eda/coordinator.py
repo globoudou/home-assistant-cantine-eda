@@ -66,7 +66,7 @@ def _anonymize_ticket(html: str | None) -> list[str]:
     from .parser import _ticket_lines  # noqa: PLC0415
 
     lines = _ticket_lines(html)
-    start = next((i for i, l in enumerate(lines) if "ANCIEN SOLDE" in l.upper()), len(lines))
+    start = next((i for i, line in enumerate(lines) if "ANCIEN SOLDE" in line.upper()), len(lines))
     return lines[start : start + 40]
 
 

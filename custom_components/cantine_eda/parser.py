@@ -533,8 +533,8 @@ def parse_ticket_html(html_text: str) -> TicketDetail | None:
     for product in products:
         product["libelle"] = _POINTS_SUFFIX_RE.sub("", " ".join(product["libelle"].split()))
     # Pour les diagnostics : de « Ancien solde » à « Nouveau solde » (pas de nom)
-    start = next((i for i, l in enumerate(lines) if "ANCIEN SOLDE" in l.upper()), None)
-    end = next((i for i, l in enumerate(lines) if "NOUVEAU SOLDE" in l.upper()), None)
+    start = next((i for i, line in enumerate(lines) if "ANCIEN SOLDE" in line.upper()), None)
+    end = next((i for i, line in enumerate(lines) if "NOUVEAU SOLDE" in line.upper()), None)
     raw_lines = lines[start : end + 1] if start is not None and end is not None else []
     if not products and total is None:
         return None
