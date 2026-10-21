@@ -59,9 +59,7 @@ class MonewebTrayPhoto(MonewebEntity, ImageEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Ticket correspondant."""
-        ticket = next(
-            (t for t in self.coordinator.data.tickets if t.photo), None
-        ) if self.coordinator.data else None
+        ticket = self.coordinator.data.photo_ticket if self.coordinator.data else None
         if ticket is None:
             return None
         return {

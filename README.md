@@ -6,19 +6,22 @@ Intégration Home Assistant pour les comptes de cantine gérés sur un portail *
 (par exemple `eda-arcueil.moneweb.fr`) : solde, passages, photo du dernier plateau,
 alerte de solde bas, rechargement en un clic et gestion du mot de passe.
 
-<p align="center"><img src="images/carte.png" alt="Carte Lovelace" width="900"></p>
+<p align="center"><img src="images/carte-ha.png" alt="Carte dans Home Assistant" width="380"></p>
 
 ## Fonctionnalités
 
 - **Plusieurs comptes** : ajoutez l'intégration une fois par enfant / par carte.
-- **Capteurs** par compte : solde, dernier passage, dernier repas, prix du dernier repas,
-  dépenses et passages du mois, dernier rechargement, solde bas (binaire).
-- **Photo du dernier plateau** (entité `image`), détectée automatiquement dans la réponse du site.
+- **Chaque passage avec son lieu** (Self, Bar & foyer, Restauration rapide) et **ce qui a été consommé**,
+  lu sur le ticket de caisse.
+- **Dernier repas** : produits, montant payé, prix avant participations et détail des participations.
+- **Photo du dernier plateau** (entité `image`), quand le self en a pris une.
+- **Capteurs** par compte : solde, dernier passage, dernier repas, lieu du dernier passage, prix du dernier repas,
+  dépenses et passages du mois, dernier rechargement, expiration du mot de passe, solde bas (binaire).
 - **Carte Lovelace** incluse et chargée automatiquement (`custom:cantine-eda-card`), avec éditeur visuel.
 - **Bouton « Recharger »** : ouvre la page de rechargement dans le navigateur et copie le mot de passe
   dans le presse-papier, comme un gestionnaire de mots de passe.
-- **Gestion du mot de passe** : récupération (administrateurs), renouvellement manuel ou automatique
-  sécurisé, enregistrement d'un mot de passe changé à la main.
+- **Mot de passe** : le site le fait expirer (environ tous les 90 jours) ; l'intégration le **renouvelle
+  automatiquement 7 jours avant**, sans risque de perte, et permet de le récupérer à tout moment.
 - Réauthentification guidée si le site refuse le mot de passe, diagnostics téléchargeables.
 
 ## Installation
@@ -52,8 +55,8 @@ Ajoutez l'intégration une seconde fois pour un autre compte.
 **Général** : intervalle de mise à jour, seuil de solde bas, page de rechargement,
 modèle d'URL de la photo, autorisation des non-administrateurs à copier le mot de passe.
 
-**Renouvellement du mot de passe** : intervalle (0 = jamais), longueur, symboles,
-endpoint de changement et corps JSON de la requête.
+**Renouvellement du mot de passe** : nombre de jours avant l'expiration (7 par défaut, 0 = jamais),
+renouvellement périodique en plus (0 = jamais), longueur, symboles, endpoint et corps JSON du changement.
 
 ## Carte
 
@@ -65,6 +68,7 @@ version. **Ajouter une carte → Cantine EDA**. En YAML :
 type: custom:cantine-eda-card
 entity: sensor.cantine_xxx_solde
 title: Cantine de Léa          # facultatif
+show_last_meal: true           # produits du dernier ticket
 show_photo: true
 show_tickets: true
 tickets: 5
@@ -106,22 +110,28 @@ data:
 5. Si Home Assistant s'arrête au milieu, au redémarrage l'intégration essaie aussi le mot de passe
    « en cours » et le « précédent » avant de demander une réauthentification.
 
+Le renouvellement automatique a lieu 7 jours avant la date d'expiration annoncée par le site
+(capteur « Expiration du mot de passe »), ou immédiatement si le site exige un changement.
 Un événement `cantine_eda_password_renewed` est émis après chaque renouvellement réussi.
 
-## À configurer une fois avec les outils du navigateur
+## API Moneweb utilisée
 
-Le site ne publie pas d'API documentée. Trois éléments dépendent de votre portail ;
-pour les trouver, connectez-vous sur un ordinateur, ouvrez les outils de développement (F12),
-onglet **Réseau**, filtre **Fetch/XHR** :
+Relevée sur `eda-arcueil.moneweb.fr` (portail JES Moneweb 2.5). Rien n'est à configurer.
 
-| Élément | Où le trouver | Option |
-|---|---|---|
-| Page de rechargement | l'adresse affichée quand vous êtes sur la page de paiement | *Page de rechargement* |
-| Changement de mot de passe | changez votre mot de passe sur le site et repérez la requête `POST` vers `/clients/api/...` ; notez son chemin et les noms des champs du corps JSON | *Endpoint* et *Corps JSON* (`{old}`, `{new}`, `{id}` sont remplacés) |
-| Photo du plateau | détectée automatiquement si la réponse contient un champ *Photo/Image/Plateau* (URL ou base64). Si c'est un identifiant, repérez la requête qui charge l'image | *Modèle d'URL de la photo*, ex. `/clients/api/ticket/photo/{id}` |
+| Appel | Usage |
+|---|---|
+| `POST /clients/api/sign/in` `{"ID", "Password", "RememberMe"}` | Connexion. Renvoie `ChangePassword` et `PasswordExpireDate`. |
+| `POST /clients/api/compte/dashboard` | Solde, tickets (`Tickets.List` : `IdTicket`, `IdCommande`, `DateTicket`, `Activite`, `AncienSolde`, `NouveauSolde`, `TotalPlateau`…), rechargements (`Versements.List`) et photos (`SubModels.Asa.Pictures`, indexées par `IdCommande`). |
+| `GET /clients/api/ticket/display/{IdTicket}` | Ticket de caisse en HTML : produits, total, participations. Lu une seule fois pour les 5 derniers passages. |
+| `GET /clients/api/acquisition/{id}` | Photo du plateau (JPEG). |
+| `POST /clients/api/password` `{"OldPassword", "NewPassword", "ConfirmPassword"}` | Changement du mot de passe (réponse 200 vide). |
 
-Les **diagnostics** de l'appareil (⋮ → Télécharger les diagnostics) contiennent la réponse
-du site anonymisée et ce que l'intégration y a détecté : c'est le plus utile pour ouvrir une issue.
+Sur un autre portail Moneweb, l'endpoint et le corps du changement de mot de passe restent modifiables
+dans les options. La **page de rechargement** peut aussi y être précisée : par défaut, c'est l'accueil
+de l'espace client.
+
+Les **diagnostics** de l'appareil (⋮ → Télécharger les diagnostics) contiennent la réponse du site
+anonymisée et ce que l'intégration y a détecté : c'est le plus utile pour ouvrir une issue.
 
 ## Exemple d'automatisation
 

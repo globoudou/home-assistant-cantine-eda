@@ -65,17 +65,19 @@
           },
           "renewal": {
             "name": "Password renewal",
-            "description": "Before enabling: set the site's password-change endpoint (see README). The new password is saved before calling the site and verified by logging in again: the old one is never lost.",
+            "description": "The website expires the password (about every 90 days). The integration renews it automatically beforehand: the new one is saved before calling the site and verified by logging in again, the old one is never lost.",
             "data": {
-              "renew_interval_days": "Renew automatically every (0 = never)",
+              "renew_days_before_expiry": "Renew before expiry (0 = never)",
+              "renew_interval_days": "Also renew every (0 = never)",
               "password_length": "Password length",
               "password_symbols": "Include symbols",
               "password_change_endpoint": "Password change endpoint",
               "password_change_payload": "Request JSON body"
             },
             "data_description": {
-              "password_change_endpoint": "E.g. /clients/api/compte/password (POST). Empty = renewal disabled.",
-              "password_change_payload": "'{old}', '{new}' and '{id}' are replaced by the old password, the new one and the username."
+              "password_change_endpoint": "Found on eda-arcueil: /clients/api/password (POST).",
+              "password_change_payload": "'{old}', '{new}' and '{id}' are replaced by the old password, the new one and the username.",
+              "renew_days_before_expiry": "Days before the expiry date set by the website."
             }
           }
         }
@@ -83,8 +85,7 @@
     },
     "error": {
       "invalid_payload": "The request body is not valid JSON.",
-      "payload_missing_new": "The request body must contain '{new}'.",
-      "renew_without_endpoint": "Set the endpoint before enabling automatic renewal."
+      "payload_missing_new": "The request body must contain '{new}'."
     }
   },
   "entity": {
@@ -97,6 +98,9 @@
       },
       "last_meal": {
         "name": "Last meal"
+      },
+      "last_activity": {
+        "name": "Last visit location"
       },
       "last_ticket_amount": {
         "name": "Last meal price"
@@ -116,6 +120,9 @@
       },
       "next_password_renewal": {
         "name": "Next password renewal"
+      },
+      "password_expires": {
+        "name": "Password expiry"
       }
     },
     "binary_sensor": {
@@ -151,7 +158,7 @@
       "message": "This password is rejected by the website."
     },
     "renew_not_configured": {
-      "message": "Renewal not configured: set the password change endpoint in the options."
+      "message": "Renewal impossible: the password change endpoint is empty in the options."
     },
     "renew_failed": {
       "message": "The password was not changed (the old one still works): {error}"

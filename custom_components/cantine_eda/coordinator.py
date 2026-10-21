@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_LOW_BALANCE,
     DEFAULT_PASSWORD_LENGTH,
     DEFAULT_PASSWORD_SYMBOLS,
+    DEFAULT_RENEW_BEFORE_EXPIRY,
     DEFAULT_RENEW_DAYS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -42,10 +43,12 @@ from .const import (
     OPT_PASSWORD_SYMBOLS,
     OPT_PHOTO_URL_TEMPLATE,
     OPT_RECHARGE_URL,
+    OPT_RENEW_BEFORE_EXPIRY,
     OPT_RENEW_DAYS,
     OPT_SCAN_INTERVAL,
+    TICKET_DETAILS_COUNT,
 )
-from .parser import CantineData, parse_dashboard
+from .parser import CantineData, TicketDetail, parse_dashboard, parse_ticket_html
 
 if TYPE_CHECKING:
     from . import MonewebConfigEntry
@@ -79,6 +82,7 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
         self.photo_content_type = "image/jpeg"
         self.photo_fingerprint: str | None = None
         self.photo_updated: datetime | None = None
+        self.ticket_details: dict[str, TicketDetail | None] = {}
         self.renew_lock = asyncio.Lock()
         self.last_renew_attempt: datetime | None = None
         self.last_renew_error: str | None = None
@@ -113,13 +117,32 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
         return dt_util.parse_datetime(value) if value else None
 
     @property
+    def password_expires(self) -> date | None:
+        """Date d'expiration annoncée par le site à la dernière connexion."""
+        return self.client.password_expires
+
+    @property
     def next_renewal(self) -> datetime | None:
-        """Date du prochain renouvellement automatique."""
-        days = int(self.opt(OPT_RENEW_DAYS, DEFAULT_RENEW_DAYS))
-        if days <= 0 or not self.can_renew:
+        """Date du prochain renouvellement automatique (None = désactivé)."""
+        if not self.can_renew:
             return None
-        base = self.password_changed_at or dt_util.utcnow()
-        due = base + timedelta(days=days)
+        candidates: list[datetime] = []
+        if self.client.must_change_password:
+            candidates.append(dt_util.utcnow())
+        before = int(self.opt(OPT_RENEW_BEFORE_EXPIRY, DEFAULT_RENEW_BEFORE_EXPIRY))
+        if before > 0 and self.password_expires:
+            # Le matin, heure locale, N jours avant l'expiration
+            due_day = self.password_expires - timedelta(days=before)
+            candidates.append(
+                datetime.combine(due_day, time(9, 0), tzinfo=dt_util.get_default_time_zone())
+            )
+        days = int(self.opt(OPT_RENEW_DAYS, DEFAULT_RENEW_DAYS))
+        if days > 0:
+            base = self.password_changed_at or dt_util.utcnow()
+            candidates.append(base + timedelta(days=days))
+        if not candidates:
+            return None
+        due = min(candidates)
         if self.last_renew_error and self.last_renew_attempt:
             due = max(due, self.last_renew_attempt + RETRY_AFTER_FAILURE)
         return due
@@ -183,8 +206,27 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
             ) from err
 
         data = parse_dashboard(raw)
+        await self._async_update_details(data)
         await self._async_update_photo(data)
         return data
+
+    async def _async_update_details(self, data: CantineData) -> None:
+        """Lit le ticket de caisse des derniers passages (une seule fois par ticket)."""
+        for ticket in data.tickets[:TICKET_DETAILS_COUNT]:
+            if not ticket.ticket_id:
+                continue
+            if ticket.ticket_id not in self.ticket_details:
+                try:
+                    html = await self.client.async_get_ticket_html(ticket.ticket_id)
+                except MonewebError as err:
+                    _LOGGER.debug("Ticket %s illisible : %s", ticket.ticket_id, err)
+                    continue
+                self.ticket_details[ticket.ticket_id] = parse_ticket_html(html) if html else None
+            ticket.detail = self.ticket_details.get(ticket.ticket_id)
+        # Le cache ne garde que les tickets encore affichés
+        keep = {t.ticket_id for t in data.tickets[: TICKET_DETAILS_COUNT * 2]}
+        for key in [k for k in self.ticket_details if k not in keep]:
+            del self.ticket_details[key]
 
     async def _async_update_photo(self, data: CantineData) -> None:
         ref = data.photo
@@ -201,7 +243,7 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
             return
         self.photo, self.photo_content_type = result
         self.photo_fingerprint = ref.fingerprint
-        ticket = next((t for t in data.tickets if t.photo is ref), None)
+        ticket = data.photo_ticket
         self.photo_updated = (ticket.date if ticket else None) or dt_util.utcnow()
 
     # --------------------------------------------------------- mot de passe
@@ -324,16 +366,13 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
         )
 
     async def async_check_auto_renew(self, _now: datetime | None = None) -> None:
-        """Appelé régulièrement : renouvelle le mot de passe s'il est temps."""
-        if self.renew_lock.locked():
+        """Appelé toutes les heures : renouvelle le mot de passe s'il est temps."""
+        if self.renew_lock.locked() or not self.can_renew:
             return
         days = int(self.opt(OPT_RENEW_DAYS, DEFAULT_RENEW_DAYS))
-        if days <= 0 or not self.can_renew:
-            return
-        if self.password_changed_at is None:
-            # Point de départ du compte à rebours
+        if days > 0 and self.password_changed_at is None:
+            # Point de départ du compte à rebours périodique
             self._update_entry_data({CONF_PASSWORD_CHANGED_AT: dt_util.utcnow().isoformat()})
-            return
         due = self.next_renewal
         if due is None or dt_util.utcnow() < due:
             return

@@ -37,6 +37,10 @@ class MonewebSensorDescription(SensorEntityDescription):
     value_fn: Callable[[MonewebCoordinator], Any]
 
 
+def _truncate(value: Any) -> str | None:
+    return str(value)[:255] if value else None
+
+
 def _last_ticket_attr(coordinator: MonewebCoordinator, attr: str) -> Any:
     ticket = coordinator.data.last_ticket
     return getattr(ticket, attr) if ticket else None
@@ -58,17 +62,18 @@ SENSORS: tuple[MonewebSensorDescription, ...] = (
     ),
     MonewebSensorDescription(
         key="last_meal",
-        value_fn=lambda c: (_last_ticket_attr(c, "label") or None)
-        and str(_last_ticket_attr(c, "label"))[:255],
+        value_fn=lambda c: _truncate(_last_ticket_attr(c, "meal") or _last_ticket_attr(c, "label")),
+    ),
+    MonewebSensorDescription(
+        key="last_activity",
+        value_fn=lambda c: _last_ticket_attr(c, "label"),
     ),
     MonewebSensorDescription(
         key="last_ticket_amount",
         device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement=CURRENCY_EURO,
         suggested_display_precision=2,
-        value_fn=lambda c: (
-            abs(amount) if (amount := _last_ticket_attr(c, "amount")) is not None else None
-        ),
+        value_fn=lambda c: _last_ticket_attr(c, "amount"),
     ),
     MonewebSensorDescription(
         key="month_spending",
@@ -88,6 +93,11 @@ SENSORS: tuple[MonewebSensorDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EURO,
         suggested_display_precision=2,
         value_fn=lambda c: c.data.last_payment.amount if c.data.last_payment else None,
+    ),
+    MonewebSensorDescription(
+        key="password_expires",
+        device_class=SensorDeviceClass.DATE,
+        value_fn=lambda c: c.password_expires,
     ),
     MonewebSensorDescription(
         key="password_changed_at",
@@ -119,7 +129,9 @@ class MonewebSensor(MonewebEntity, SensorEntity):
 
     entity_description: MonewebSensorDescription
     # Gros attributs inutiles dans l'historique
-    _unrecorded_attributes = frozenset({"tickets", "versements", "lignes"})
+    _unrecorded_attributes = frozenset(
+        {"tickets", "versements", "lignes", "produits", "participations"}
+    )
 
     def __init__(
         self, coordinator: MonewebCoordinator, description: MonewebSensorDescription
@@ -144,6 +156,9 @@ class MonewebSensor(MonewebEntity, SensorEntity):
                 "url_rechargement": self.coordinator.recharge_url,
                 "seuil_solde_bas": self.coordinator.low_balance_threshold,
                 "dernier_passage": _iso(data.last_passage),
+                "expiration_mot_de_passe": self.coordinator.password_expires.isoformat()
+                if self.coordinator.password_expires
+                else None,
                 "entite_photo": self._sibling("image", "tray_photo"),
                 "entite_renouvellement": self._sibling("button", "renew_password")
                 if self.coordinator.can_renew
@@ -151,9 +166,18 @@ class MonewebSensor(MonewebEntity, SensorEntity):
                 "tickets": [t.as_dict() for t in data.tickets[:MAX_TICKETS_ATTR]],
                 "versements": [p.as_dict() for p in data.payments[:MAX_PAYMENTS_ATTR]],
             }
-        if key in ("last_meal", "last_ticket_amount") and data.last_ticket:
+        if key in ("last_meal", "last_activity", "last_ticket_amount") and data.last_ticket:
             ticket = data.last_ticket
-            return {"date": _iso(ticket.date), "lignes": ticket.lines}
+            attrs: dict[str, Any] = {
+                "date": _iso(ticket.date),
+                "activite": ticket.activity,
+                "solde_apres": ticket.balance_after,
+            }
+            if key == "last_meal" and ticket.detail:
+                attrs |= ticket.detail.as_dict()
+            return attrs
+        if key == "password_expires":
+            return {"renouvellement_exige": self.coordinator.client.must_change_password}
         if key == "last_payment" and data.last_payment:
             return {"date": _iso(data.last_payment.date)}
         return None

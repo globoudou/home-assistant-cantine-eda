@@ -27,6 +27,7 @@ OPT_RECHARGE_URL: Final = "recharge_url"
 OPT_ALLOW_NON_ADMIN: Final = "allow_non_admin"
 OPT_PHOTO_URL_TEMPLATE: Final = "photo_url_template"
 OPT_RENEW_DAYS: Final = "renew_interval_days"
+OPT_RENEW_BEFORE_EXPIRY: Final = "renew_days_before_expiry"
 OPT_PASSWORD_LENGTH: Final = "password_length"
 OPT_PASSWORD_SYMBOLS: Final = "password_symbols"
 OPT_CHANGE_ENDPOINT: Final = "password_change_endpoint"
@@ -35,12 +36,14 @@ OPT_CHANGE_PAYLOAD: Final = "password_change_payload"
 DEFAULT_HOST: Final = "eda-arcueil.moneweb.fr"
 DEFAULT_SCAN_INTERVAL: Final = 10  # minutes
 DEFAULT_LOW_BALANCE: Final = 5.0
-DEFAULT_RENEW_DAYS: Final = 0  # 0 = renouvellement automatique désactivé
+DEFAULT_RENEW_DAYS: Final = 0  # 0 = pas de renouvellement périodique
+# Le site impose une expiration (PasswordExpireDate, ~90 jours) : on renouvelle
+# automatiquement 7 jours avant. 0 = désactivé.
+DEFAULT_RENEW_BEFORE_EXPIRY: Final = 7
 DEFAULT_PASSWORD_LENGTH: Final = 16
 DEFAULT_PASSWORD_SYMBOLS: Final = True
-# Endpoint de changement de mot de passe : inconnu à ce jour, à confirmer
-# avec les outils développeur du navigateur (voir README).
-DEFAULT_CHANGE_ENDPOINT: Final = ""
+# Relevé sur eda-arcueil : POST /clients/api/password -> 200, corps vide
+DEFAULT_CHANGE_ENDPOINT: Final = "/clients/api/password"
 DEFAULT_CHANGE_PAYLOAD: Final = (
     '{"OldPassword": "{old}", "NewPassword": "{new}", "ConfirmPassword": "{new}"}'
 )
@@ -49,6 +52,9 @@ DEFAULT_CHANGE_PAYLOAD: Final = (
 API_BASE: Final = "/clients/api"
 API_SIGN_IN: Final = f"{API_BASE}/sign/in"
 API_DASHBOARD: Final = f"{API_BASE}/compte/dashboard"
+API_TICKET: Final = f"{API_BASE}/ticket/display/{{ticket_id}}"
+# Nombre de passages récents dont on lit le ticket de caisse (mis en cache)
+TICKET_DETAILS_COUNT: Final = 5
 CLIENT_PATH: Final = "/clients/"
 
 # --- Divers -------------------------------------------------------------------

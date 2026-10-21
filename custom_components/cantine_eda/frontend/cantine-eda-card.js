@@ -4,6 +4,7 @@
  *   type: custom:cantine-eda-card
  *   entity: sensor.cantine_xxx_solde
  *   title: Cantine de Léa         # facultatif
+ *   show_last_meal: true          # produits du dernier ticket
  *   show_photo: true
  *   show_tickets: true
  *   tickets: 5
@@ -11,7 +12,7 @@
  *   copy_password_on_recharge: true
  */
 
-const CARD_VERSION = "1.0.1";
+const CARD_VERSION = "1.1.0";
 const DOMAIN = "cantine_eda";
 
 const esc = (value) =>
@@ -75,6 +76,7 @@ class CantineEdaCard extends HTMLElement {
   setConfig(config) {
     if (!config.entity) throw new Error("Choisissez le capteur « Solde » d'un compte cantine");
     this._config = {
+      show_last_meal: true,
       show_photo: true,
       show_tickets: true,
       tickets: 5,
@@ -169,7 +171,7 @@ class CantineEdaCard extends HTMLElement {
       const d = t.date && new Date(t.date);
       return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
-    const monthTotal = monthTickets.reduce((sum, t) => sum + Math.abs(Number(t.montant) || 0), 0);
+    const monthTotal = monthTickets.reduce((sum, t) => sum + (Number(t.montant) || 0), 0);
 
     const photoState = a.entite_photo ? hass.states[a.entite_photo] : undefined;
     const photoUrl = photoState && photoState.state !== "unavailable" ? photoState.attributes.entity_picture : null;
@@ -180,8 +182,7 @@ class CantineEdaCard extends HTMLElement {
     const canRenew = isAdmin && a.entite_renouvellement && hass.states[a.entite_renouvellement]?.state !== "unavailable";
 
     const ticketRows = tickets.slice(0, Number(this._config.tickets) || 0).map((t) => {
-      const lines = (t.lignes || []).filter((l) => l.libelle);
-      const label = t.libelle || (lines.length ? "" : "Passage");
+      const meal = t.repas || (t.lignes || []).map((l) => l.libelle).filter(Boolean).join(", ");
       return `
         <li>
           <div class="t-date">
@@ -189,13 +190,25 @@ class CantineEdaCard extends HTMLElement {
             <span class="t-month">${esc(this._date(t.date, { weekday: "short" }))}</span>
           </div>
           <div class="t-body">
-            <div class="t-label">${esc(label)}</div>
-            ${lines.length && t.libelle !== lines.map((l) => l.libelle).join(", ")
-              ? `<div class="t-lines">${lines.map((l) => esc(l.libelle)).join(" · ")}</div>` : ""}
+            <div class="t-label">${esc(t.libelle || "Passage")}${t.photo ? ' <ha-icon class="t-photo" icon="mdi:camera-outline" title="Photo du plateau"></ha-icon>' : ""}</div>
+            ${meal ? `<div class="t-lines">${esc(meal)}</div>` : ""}
           </div>
-          <div class="t-amount">${t.montant === null || t.montant === undefined ? "" : esc(this._money(-Math.abs(t.montant)))}</div>
+          <div class="t-amount ${Number(t.montant) < 0 ? "refund" : ""}">${t.montant === null || t.montant === undefined ? "" : esc(this._money(-Number(t.montant)))}</div>
         </li>`;
     }).join("");
+
+    const last = tickets[0];
+    const lastLines = last && (last.lignes || []).filter((l) => l.libelle);
+    const lastMeal = last && lastLines.length ? `
+      <div class="meal">
+        <div class="meal-head">
+          <ha-icon icon="${ICON_BY_ACTIVITY[last.activite] || "mdi:silverware-fork-knife"}"></ha-icon>
+          <span class="meal-title">Dernier repas · ${esc(last.libelle || "")}</span>
+          <span class="meal-date">${esc(this._date(last.date, { weekday: "short", day: "numeric", month: "short" }))}</span>
+        </div>
+        <ul>${lastLines.map((l) => `<li><span>${l.quantite && l.quantite !== 1 ? `${esc(l.quantite)} × ` : ""}${esc(l.libelle)}</span></li>`).join("")}</ul>
+        ${last.montant !== null && last.montant !== undefined ? `<div class="meal-total">Payé <b>${esc(this._money(last.montant))}</b>${last.prix_complet ? ` · prix avant participations ${esc(this._money(last.prix_complet))}` : ""}</div>` : ""}
+      </div>` : "";
 
     const revealed = this._revealed && this._revealed.until > Date.now() ? this._revealed.password : null;
 
@@ -224,12 +237,14 @@ class CantineEdaCard extends HTMLElement {
           </div>
         </div>
 
+        ${this._config.show_last_meal ? lastMeal : ""}
+
         ${this._config.show_photo ? `
           <div class="photo ${photoUrl ? "" : "empty"}" ${photoUrl ? `data-action="more-info" data-entity="${esc(a.entite_photo)}"` : ""}>
             ${photoUrl
               ? `<img src="${esc(photoUrl)}" alt="Photo du dernier plateau" loading="lazy">
                  <div class="caption">
-                   <span>${esc(photoTicket?.libelle || "Dernier plateau")}</span>
+                   <span>${esc(photoTicket?.repas || photoTicket?.libelle || "Dernier plateau")}</span>
                    <span>${esc(this._date(photoTicket?.date, { weekday: "long", day: "numeric", month: "long" }))}</span>
                  </div>`
               : `<ha-icon icon="mdi:camera-off-outline"></ha-icon><span>Pas encore de photo de plateau</span>`}
@@ -342,6 +357,12 @@ class CantineEdaCard extends HTMLElement {
   }
 }
 
+const ICON_BY_ACTIVITY = {
+  "SELF": "mdi:silverware-fork-knife",
+  "BAR&FOYER": "mdi:coffee-outline",
+  "RESTAURATION RAPIDE": "mdi:food-outline",
+};
+
 const STYLE = `<style>
   :host { --cantine-accent: var(--primary-color); --cantine-low: var(--error-color, #db4437); }
   ha-card { overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
@@ -361,6 +382,14 @@ const STYLE = `<style>
   .pill ha-icon { --mdc-icon-size: 16px; }
   .stats { text-align: right; font-size: 13px; color: var(--secondary-text-color); line-height: 1.6; }
   .stats span { font-weight: 600; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
+  .meal { border-radius: 14px; padding: 12px 14px; background: var(--secondary-background-color); }
+  .meal-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); }
+  .meal-head ha-icon { --mdc-icon-size: 18px; color: var(--cantine-accent); }
+  .meal-title { flex: 1; font-weight: 600; color: var(--primary-text-color); }
+  .meal-date { text-transform: capitalize; }
+  .meal ul { margin: 8px 0 0; padding: 0 0 0 26px; font-size: 15px; line-height: 1.5; color: var(--primary-text-color); }
+  .meal-total { margin-top: 8px; padding-left: 26px; font-size: 12px; color: var(--secondary-text-color); }
+  .meal-total b { color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
   .photo { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; cursor: pointer;
     background: var(--secondary-background-color); }
   .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -379,6 +408,8 @@ const STYLE = `<style>
   .t-body { flex: 1; min-width: 0; }
   .t-label { font-size: 14px; color: var(--primary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .t-lines { font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t-photo { --mdc-icon-size: 15px; color: var(--secondary-text-color); vertical-align: -2px; }
+  .t-amount.refund { color: var(--success-color, #43a047); }
   .t-amount { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--secondary-text-color); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   button { font: inherit; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; min-height: 40px;
@@ -421,6 +452,7 @@ class CantineEdaCardEditor extends HTMLElement {
       { name: "entity", required: true, selector: { entity: { filter: { integration: DOMAIN, domain: "sensor", device_class: "monetary" } } } },
       { name: "title", selector: { text: {} } },
       { type: "grid", name: "", schema: [
+        { name: "show_last_meal", selector: { boolean: {} } },
         { name: "show_photo", selector: { boolean: {} } },
         { name: "show_tickets", selector: { boolean: {} } },
         { name: "show_credentials", selector: { boolean: {} } },
@@ -429,7 +461,7 @@ class CantineEdaCardEditor extends HTMLElement {
       { name: "tickets", selector: { number: { min: 0, max: 15, mode: "slider" } } },
     ];
     this._form.data = {
-      show_photo: true, show_tickets: true, tickets: 5, show_credentials: true, copy_password_on_recharge: true,
+      show_last_meal: true, show_photo: true, show_tickets: true, tickets: 5, show_credentials: true, copy_password_on_recharge: true,
       ...this._config,
     };
   }
@@ -438,6 +470,7 @@ class CantineEdaCardEditor extends HTMLElement {
 const LABELS = {
   entity: "Compte (capteur Solde)",
   title: "Titre",
+  show_last_meal: "Détail du dernier repas",
   show_photo: "Photo du dernier plateau",
   show_tickets: "Derniers passages",
   show_credentials: "Boutons identifiant / mot de passe",

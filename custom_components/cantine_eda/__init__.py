@@ -152,6 +152,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MonewebConfigEntry) -> b
         )
     )
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    # Le site peut exiger un changement immédiat (ChangePassword) : on vérifie dès le démarrage
+    entry.async_create_background_task(
+        hass, coordinator.async_check_auto_renew(), f"{DOMAIN} renouvellement initial"
+    )
     return True
 
 

@@ -65,17 +65,19 @@
           },
           "renewal": {
             "name": "Renouvellement du mot de passe",
-            "description": "Avant d'activer : renseignez l'endpoint de changement de mot de passe du site (voir le README). Le nouveau mot de passe est enregistré avant l'appel au site et vérifié par une reconnexion : l'ancien n'est jamais perdu.",
+            "description": "Le site fait expirer le mot de passe (environ tous les 90 jours). L'intégration le renouvelle automatiquement avant l'échéance : le nouveau est enregistré avant l'appel au site puis vérifié par une reconnexion, l'ancien n'est jamais perdu.",
             "data": {
-              "renew_interval_days": "Renouveler automatiquement tous les (0 = jamais)",
+              "renew_days_before_expiry": "Renouveler avant l'expiration (0 = jamais)",
+              "renew_interval_days": "Renouveler aussi tous les (0 = jamais)",
               "password_length": "Longueur du mot de passe",
               "password_symbols": "Inclure des symboles",
               "password_change_endpoint": "Endpoint de changement de mot de passe",
               "password_change_payload": "Corps JSON de la requête"
             },
             "data_description": {
-              "password_change_endpoint": "Ex. /clients/api/compte/password (POST). Vide = renouvellement désactivé.",
-              "password_change_payload": "'{old}', '{new}' et '{id}' sont remplacés par l'ancien mot de passe, le nouveau et l'identifiant."
+              "password_change_endpoint": "Relevé sur eda-arcueil : /clients/api/password (POST).",
+              "password_change_payload": "'{old}', '{new}' et '{id}' sont remplacés par l'ancien mot de passe, le nouveau et l'identifiant.",
+              "renew_days_before_expiry": "Nombre de jours avant la date d'expiration fixée par le site."
             }
           }
         }
@@ -83,8 +85,7 @@
     },
     "error": {
       "invalid_payload": "Le corps de la requête n'est pas un JSON valide.",
-      "payload_missing_new": "Le corps de la requête doit contenir '{new}'.",
-      "renew_without_endpoint": "Renseignez l'endpoint avant d'activer le renouvellement automatique."
+      "payload_missing_new": "Le corps de la requête doit contenir '{new}'."
     }
   },
   "entity": {
@@ -97,6 +98,9 @@
       },
       "last_meal": {
         "name": "Dernier repas"
+      },
+      "last_activity": {
+        "name": "Lieu du dernier passage"
       },
       "last_ticket_amount": {
         "name": "Prix du dernier repas"
@@ -116,6 +120,9 @@
       },
       "next_password_renewal": {
         "name": "Prochain renouvellement du mot de passe"
+      },
+      "password_expires": {
+        "name": "Expiration du mot de passe"
       }
     },
     "binary_sensor": {
@@ -151,7 +158,7 @@
       "message": "Ce mot de passe est refusé par le site."
     },
     "renew_not_configured": {
-      "message": "Renouvellement non configuré : renseignez l'endpoint de changement de mot de passe dans les options."
+      "message": "Renouvellement impossible : l'endpoint de changement de mot de passe est vide dans les options."
     },
     "renew_failed": {
       "message": "Le mot de passe n'a pas été changé (l'ancien fonctionne toujours) : {error}"

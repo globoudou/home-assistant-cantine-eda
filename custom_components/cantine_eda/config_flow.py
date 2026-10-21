@@ -49,6 +49,7 @@ from .const import (
     DEFAULT_LOW_BALANCE,
     DEFAULT_PASSWORD_LENGTH,
     DEFAULT_PASSWORD_SYMBOLS,
+    DEFAULT_RENEW_BEFORE_EXPIRY,
     DEFAULT_RENEW_DAYS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -60,6 +61,7 @@ from .const import (
     OPT_PASSWORD_SYMBOLS,
     OPT_PHOTO_URL_TEMPLATE,
     OPT_RECHARGE_URL,
+    OPT_RENEW_BEFORE_EXPIRY,
     OPT_RENEW_DAYS,
     OPT_SCAN_INTERVAL,
 )
@@ -252,10 +254,13 @@ class CantineOptionsFlow(OptionsFlow):
             else:
                 if "{new}" not in payload:
                     errors["base"] = "payload_missing_new"
-            if flat.get(OPT_RENEW_DAYS) and not flat.get(OPT_CHANGE_ENDPOINT):
-                errors["base"] = "renew_without_endpoint"
             if not errors:
-                for key in (OPT_SCAN_INTERVAL, OPT_RENEW_DAYS, OPT_PASSWORD_LENGTH):
+                for key in (
+                    OPT_SCAN_INTERVAL,
+                    OPT_RENEW_DAYS,
+                    OPT_RENEW_BEFORE_EXPIRY,
+                    OPT_PASSWORD_LENGTH,
+                ):
                     if key in flat:
                         flat[key] = int(flat[key])
                 return self.async_create_entry(data=flat)
@@ -266,6 +271,7 @@ class CantineOptionsFlow(OptionsFlow):
             OPT_LOW_BALANCE: DEFAULT_LOW_BALANCE,
             OPT_ALLOW_NON_ADMIN: False,
             OPT_RENEW_DAYS: DEFAULT_RENEW_DAYS,
+            OPT_RENEW_BEFORE_EXPIRY: DEFAULT_RENEW_BEFORE_EXPIRY,
             OPT_PASSWORD_LENGTH: DEFAULT_PASSWORD_LENGTH,
             OPT_PASSWORD_SYMBOLS: DEFAULT_PASSWORD_SYMBOLS,
             OPT_CHANGE_ENDPOINT: DEFAULT_CHANGE_ENDPOINT,
@@ -300,6 +306,14 @@ class CantineOptionsFlow(OptionsFlow):
         )
         renewal = vol.Schema(
             {
+                vol.Required(
+                    OPT_RENEW_BEFORE_EXPIRY, default=values[OPT_RENEW_BEFORE_EXPIRY]
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0, max=60, step=1, mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="j",
+                    )
+                ),
                 vol.Required(OPT_RENEW_DAYS, default=values[OPT_RENEW_DAYS]): NumberSelector(
                     NumberSelectorConfig(
                         min=0, max=365, step=1, mode=NumberSelectorMode.BOX,
@@ -310,9 +324,8 @@ class CantineOptionsFlow(OptionsFlow):
                     NumberSelectorConfig(min=8, max=64, step=1, mode=NumberSelectorMode.BOX)
                 ),
                 vol.Required(OPT_PASSWORD_SYMBOLS, default=values[OPT_PASSWORD_SYMBOLS]): BooleanSelector(),
-                vol.Optional(
-                    OPT_CHANGE_ENDPOINT,
-                    description={"suggested_value": values.get(OPT_CHANGE_ENDPOINT)},
+                vol.Required(
+                    OPT_CHANGE_ENDPOINT, default=values[OPT_CHANGE_ENDPOINT]
                 ): str,
                 vol.Required(OPT_CHANGE_PAYLOAD, default=values[OPT_CHANGE_PAYLOAD]): TextSelector(
                     TextSelectorConfig(multiline=True)
@@ -324,9 +337,7 @@ class CantineOptionsFlow(OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(SECTION_GENERAL): section(general, {"collapsed": False}),
-                    vol.Required(SECTION_RENEWAL): section(
-                        renewal, {"collapsed": not values[OPT_CHANGE_ENDPOINT]}
-                    ),
+                    vol.Required(SECTION_RENEWAL): section(renewal, {"collapsed": True}),
                 }
             ),
             errors=errors,

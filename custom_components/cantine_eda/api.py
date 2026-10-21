@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+from datetime import date
 import json
 import logging
 import secrets
@@ -14,7 +15,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
-from .const import API_DASHBOARD, API_SIGN_IN, CLIENT_PATH
+from .const import API_DASHBOARD, API_SIGN_IN, API_TICKET, CLIENT_PATH
 from .parser import PhotoRef, find_photo
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,16 @@ JSON_HEADERS = {
 # antislash ni espace, qui posent souvent problème).
 PASSWORD_SYMBOLS = "!#$%&()*+,-.:;=?@[]_{}"
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+
+def _parse_date(value: Any) -> date | None:
+    """« 2027-01-18 » ou « 2027-01-18T00:00:00 » -> date."""
+    if not isinstance(value, str) or len(value) < 10:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
 
 
 class MonewebError(Exception):
@@ -109,6 +120,9 @@ class MonewebClient:
         self._ssl: bool | None = None if verify_ssl else False
         self._logged_in = False
         self._lock = asyncio.Lock()
+        # Renseignés à chaque connexion réussie
+        self.password_expires: date | None = None
+        self.must_change_password = False
 
     def url(self, path: str) -> str:
         """URL absolue à partir d'un chemin relatif au site."""
@@ -165,6 +179,11 @@ class MonewebClient:
             for key in ("success", "succes", "isauthenticated", "authenticated", "ok"):
                 if lowered.get(key) is False:
                     raise MonewebAuthError("Identifiant ou mot de passe incorrect")
+            # Réponse observée : {"ChangePassword": false, "Token": null,
+            #                     "PasswordExpireDate": "2027-01-18"}
+            self.must_change_password = bool(lowered.get("changepassword"))
+            expire = lowered.get("passwordexpiredate")
+            self.password_expires = _parse_date(expire)
         self._logged_in = True
 
     async def async_login(self) -> None:
@@ -183,14 +202,19 @@ class MonewebClient:
             return True
 
     async def _authenticated_post(self, path: str, payload: Any) -> tuple[int, Any]:
+        return await self._authenticated("POST", path, payload)
+
+    async def _authenticated(
+        self, method: str, path: str, payload: Any = None
+    ) -> tuple[int, Any]:
         if not self._logged_in:
             await self.async_login()
-        status, body = await self._request("POST", path, payload)
+        status, body = await self._request(method, path, payload)
         if status in (401, 403, 419, 440):
             _LOGGER.debug("Session expirée (HTTP %s), nouvelle connexion", status)
             self._logged_in = False
             await self.async_login()
-            status, body = await self._request("POST", path, payload)
+            status, body = await self._request(method, path, payload)
             if status in (401, 403):
                 raise MonewebAuthError(f"Accès refusé après reconnexion (HTTP {status})")
         if status >= 400:
@@ -212,6 +236,13 @@ class MonewebClient:
         if not isinstance(body, dict):
             raise MonewebConnectionError("Réponse inattendue du tableau de bord")
         return body
+
+    async def async_get_ticket_html(self, ticket_id: str) -> str | None:
+        """Ticket de caisse (HTML) d'un passage."""
+        _, body = await self._authenticated("GET", API_TICKET.format(ticket_id=ticket_id))
+        if isinstance(body, dict) and isinstance(body.get("html"), str):
+            return body["html"]
+        return None
 
     async def async_fetch_photo(
         self, ref: PhotoRef, url_template: str | None

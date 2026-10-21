@@ -17,5 +17,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/globoudou/home-assistant-cantine-eda/issues",
   "requirements": [],
-  "version": "1.0.1"
+  "version": "1.1.0"
 }
