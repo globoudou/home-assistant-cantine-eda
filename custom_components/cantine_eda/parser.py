@@ -428,10 +428,12 @@ def parse_dashboard(raw: dict[str, Any]) -> CantineData:
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _PRODUCTS_HEADER_RE = re.compile(r"Qt[ée]\s+Produit", re.IGNORECASE)
+# Ligne produit : [code] quantité libellé [points P] [PU €] TTC €
+# (le PU et les points sont facultatifs : la mise en page varie selon la caisse)
 _ITEM_RE = re.compile(
-    r"^\s*(?:[A-Z]\s+)?(?P<qty>\d+(?:,\d+)?)\s+(?P<name>\S.*?)\s{2,}"
-    r"(?:(?P<pts>-?[\d\s]+,\d+)\s*P\s+)?"
-    r"(?P<pu>-?[\d\s]+,\d+)\s*€\s+(?P<ttc>-?[\d\s]+,\d+)\s*€\s*$"
+    r"^\s*(?:[A-Z]\s+)?(?P<qty>\d+(?:,\d+)?)\s+(?P<name>\S.*?)\s+"
+    r"(?:(?P<pts>-?\d[\d ]*,\d+)\s*P\s+)?"
+    r"(?:(?P<pu>-?\d[\d ]*,\d+)\s*€\s+)?(?P<ttc>-?\d[\d ]*,\d+)\s*€\s*$"
 )
 _AMOUNT_LINE_RE = re.compile(r"^\s*(?:\d+\s+)?(?P<label>\S.*?)\s{2,}(?P<amount>-?[\d\s]+,\d+)\s*€\s*$")
 _POINTS_SUFFIX_RE = re.compile(r"\s+\d+\s*pts?$", re.IGNORECASE)
@@ -456,6 +458,7 @@ class TicketDetail:
     full_price: float | None  # prix TTC avant participations
     subsidies: list[dict[str, Any]]
     sections: list[str]
+    raw_lines: list[str] = field(default_factory=list)
 
     @property
     def summary(self) -> str | None:
@@ -529,6 +532,10 @@ def parse_ticket_html(html_text: str) -> TicketDetail | None:
 
     for product in products:
         product["libelle"] = _POINTS_SUFFIX_RE.sub("", " ".join(product["libelle"].split()))
+    # Pour les diagnostics : de « Ancien solde » à « Nouveau solde » (pas de nom)
+    start = next((i for i, l in enumerate(lines) if "ANCIEN SOLDE" in l.upper()), None)
+    end = next((i for i, l in enumerate(lines) if "NOUVEAU SOLDE" in l.upper()), None)
+    raw_lines = lines[start : end + 1] if start is not None and end is not None else []
     if not products and total is None:
         return None
-    return TicketDetail(products, total, full_price, subsidies, sections)
+    return TicketDetail(products, total, full_price, subsidies, sections, raw_lines)

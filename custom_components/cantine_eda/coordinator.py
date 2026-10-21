@@ -59,6 +59,17 @@ EVENT_PASSWORD_RENEWED = f"{DOMAIN}_password_renewed"
 RETRY_AFTER_FAILURE = timedelta(hours=24)
 
 
+def _anonymize_ticket(html: str | None) -> list[str]:
+    """Lignes du ticket à partir de « Ancien solde » (le nom figure avant)."""
+    if not html:
+        return []
+    from .parser import _ticket_lines  # noqa: PLC0415
+
+    lines = _ticket_lines(html)
+    start = next((i for i, l in enumerate(lines) if "ANCIEN SOLDE" in l.upper()), len(lines))
+    return lines[start : start + 40]
+
+
 class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
     """Gère un compte cantine."""
 
@@ -83,6 +94,8 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
         self.photo_fingerprint: str | None = None
         self.photo_updated: datetime | None = None
         self.ticket_details: dict[str, TicketDetail | None] = {}
+        # Tickets non reconnus, gardés (anonymisés) pour les diagnostics
+        self.unparsed_tickets: dict[str, list[str]] = {}
         self.renew_lock = asyncio.Lock()
         self.last_renew_attempt: datetime | None = None
         self.last_renew_error: str | None = None
@@ -212,7 +225,10 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
 
     async def _async_update_details(self, data: CantineData) -> None:
         """Lit le ticket de caisse des derniers passages (une seule fois par ticket)."""
-        for ticket in data.tickets[:TICKET_DETAILS_COUNT]:
+        wanted = list(data.tickets[:TICKET_DETAILS_COUNT])
+        if data.photo_ticket and data.photo_ticket not in wanted:
+            wanted.append(data.photo_ticket)  # pour la légende de la photo
+        for ticket in wanted:
             if not ticket.ticket_id:
                 continue
             if ticket.ticket_id not in self.ticket_details:
@@ -221,10 +237,14 @@ class MonewebCoordinator(DataUpdateCoordinator[CantineData]):
                 except MonewebError as err:
                     _LOGGER.debug("Ticket %s illisible : %s", ticket.ticket_id, err)
                     continue
-                self.ticket_details[ticket.ticket_id] = parse_ticket_html(html) if html else None
+                detail = parse_ticket_html(html) if html else None
+                if detail is None or not detail.products:
+                    _LOGGER.debug("Ticket %s : aucun produit reconnu", ticket.ticket_id)
+                    self.unparsed_tickets[ticket.ticket_id] = _anonymize_ticket(html)
+                self.ticket_details[ticket.ticket_id] = detail
             ticket.detail = self.ticket_details.get(ticket.ticket_id)
         # Le cache ne garde que les tickets encore affichés
-        keep = {t.ticket_id for t in data.tickets[: TICKET_DETAILS_COUNT * 2]}
+        keep = {t.ticket_id for t in [*data.tickets[: TICKET_DETAILS_COUNT * 2], *wanted]}
         for key in [k for k in self.ticket_details if k not in keep]:
             del self.ticket_details[key]
 

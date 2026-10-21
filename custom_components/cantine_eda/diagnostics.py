@@ -76,5 +76,12 @@ async def async_get_config_entry_diagnostics(
             "renouvellement_configure": coordinator.can_renew,
             "derniere_erreur_renouvellement": coordinator.last_renew_error,
         },
+        "tickets_lus": {
+            ticket_id: (
+                {"produits": d.products, "total": d.total, "lignes": d.raw_lines} if d else None
+            )
+            for ticket_id, d in coordinator.ticket_details.items()
+        },
+        "tickets_non_reconnus": coordinator.unparsed_tickets,
         "dashboard_brut": async_redact_data(_shorten(data.raw), TO_REDACT) if data else None,
     }

@@ -294,3 +294,29 @@ async def test_last_meal_from_ticket(hass: HomeAssistant, moneweb: FakeMoneweb, 
     count = len(moneweb.ticket_requests)
     await entry.runtime_data.async_refresh()
     assert len(moneweb.ticket_requests) == count == 3
+
+
+def _big_jpeg() -> bytes:
+    import io
+    import random
+
+    from PIL import Image
+
+    rnd = random.Random(1)
+    img = Image.new("RGB", (640, 480))
+    img.putdata([(rnd.randrange(256), rnd.randrange(256), rnd.randrange(256)) for _ in range(640 * 480)])
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=85)
+    return out.getvalue()
+
+
+async def test_big_photo_not_truncated(hass: HomeAssistant, moneweb: FakeMoneweb, entry_data, hass_client) -> None:
+    """La photo arrive en plusieurs morceaux : elle doit être lue en entier."""
+    moneweb.big_photo = _big_jpeg()
+    assert len(moneweb.big_photo) > 100_000
+    await _setup(hass, entry_data)
+    image = next(s for s in hass.states.async_all("image"))
+    client = await hass_client()
+    resp = await client.get(f"/api/image_proxy/{image.entity_id}")
+    assert resp.status == 200
+    assert await resp.read() == moneweb.big_photo

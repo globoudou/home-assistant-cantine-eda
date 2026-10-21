@@ -289,7 +289,19 @@ class MonewebClient:
                     _LOGGER.debug("Photo %s : HTTP %s", path, resp.status)
                     return None
                 content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
-                data = await resp.content.read(MAX_PHOTO_BYTES)
+                # content.read(n) ne renvoie que ce qui est déjà arrivé : on lit
+                # tout le corps, sinon le JPEG est tronqué (bas de l'image gris)
+                data = bytearray()
+                async for chunk in resp.content.iter_chunked(64 * 1024):
+                    data.extend(chunk)
+                    if len(data) > MAX_PHOTO_BYTES:
+                        _LOGGER.debug("Photo %s trop volumineuse", path)
+                        return None
+                expected = resp.content_length
+                data = bytes(data)
+            if expected is not None and len(data) < expected:
+                _LOGGER.debug("Photo %s incomplète (%s/%s octets)", path, len(data), expected)
+                return None
             if content_type.startswith("application/json") or data[:1] in (b"{", b'"'):
                 # Certaines API renvoient la photo en base64 dans un JSON
                 try:
@@ -313,6 +325,9 @@ class MonewebClient:
                     return await self.async_fetch_photo(PhotoRef("base64", decoded, "json"), None)
                 return None
             if not content_type.startswith("image/"):
+                return None
+            if content_type == "image/jpeg" and not data.rstrip(b"\x00").endswith(b"\xff\xd9"):
+                _LOGGER.debug("Photo %s : JPEG incomplet, nouvel essai plus tard", path)
                 return None
             return data, content_type
         return None

@@ -12,7 +12,7 @@
  *   copy_password_on_recharge: true
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.1.1";
 const DOMAIN = "cantine_eda";
 
 const esc = (value) =>
@@ -197,7 +197,8 @@ class CantineEdaCard extends HTMLElement {
         </li>`;
     }).join("");
 
-    const last = tickets[0];
+    // Dernier passage dont on connaît le contenu
+    const last = tickets.find((t) => (t.lignes || []).some((l) => l.libelle));
     const lastLines = last && (last.lignes || []).filter((l) => l.libelle);
     const lastMeal = last && lastLines.length ? `
       <div class="meal">

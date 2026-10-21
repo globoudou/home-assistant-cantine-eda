@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -82,6 +83,7 @@ class FakeMoneweb:
     logins: list[str] = field(default_factory=list)
     change_payloads: list[dict[str, Any]] = field(default_factory=list)
     ticket_requests: list[str] = field(default_factory=list)
+    big_photo: bytes | None = None
     url: str = ""
 
     def dashboard(self) -> dict[str, Any]:
@@ -150,10 +152,20 @@ async def moneweb(socket_enabled: Any) -> FakeMoneweb:
             return web.json_response({}, status=401)
         return web.json_response(state.dashboard())
 
-    async def photo(request: web.Request) -> web.Response:
+    async def photo(request: web.Request) -> web.StreamResponse:
         if not authed(request):
             return web.Response(status=401)
-        return web.Response(body=PNG, content_type="image/jpeg")
+        if state.big_photo is None:
+            return web.Response(body=PNG, content_type="image/png")
+        # Envoi en plusieurs morceaux espacés, comme une vraie photo de ~80 Ko
+        resp = web.StreamResponse(headers={"Content-Type": "image/jpeg"})
+        resp.content_length = len(state.big_photo)
+        await resp.prepare(request)
+        for start in range(0, len(state.big_photo), 8192):
+            await resp.write(state.big_photo[start : start + 8192])
+            await asyncio.sleep(0.002)
+        await resp.write_eof()
+        return resp
 
     async def change(request: web.Request) -> web.Response:
         if not authed(request):
